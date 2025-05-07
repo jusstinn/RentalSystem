@@ -1,0 +1,4 @@
+type,brand,color,license_plate,model,matriculation_date,mileage
+Car,Toyota,Blue,1234ABC,Corolla,2018-05-15,15000
+Motorbike,Honda,Red,5678DEF,CBR,2020-03-10,5000
+Truck,Volvo,White,9012GHI,FH16,2015-08-22,50000

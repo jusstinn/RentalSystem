@@ -1,0 +1,2 @@
+rental_id,vehicle_license_plate,client_id,start_date,end_date,assurance_type,is_active,initial_mileage,final_mileage
+581b526f-bb0d-44cb-9923-e70c87339160,1234ABC,C12345,2025-05-06,2025-05-13,full,True,15000,
