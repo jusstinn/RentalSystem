@@ -1,5 +1,5 @@
-"""
-Vehicle Rental System tests package.
+import unittest
+import sys
+import os
  
-This package contains all the test cases for the Vehicle Rental System.
-""" 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 

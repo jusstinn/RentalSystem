@@ -1,11 +1,11 @@
-from models.user import User
+from .user import User
 
 class Admin(User):
     """Admin user type that can manage the rental shop."""
     
     VALID_ROLES = {'mechanic', 'rental_manager', 'administrator'}
     
-    def __init__(self, name, birth_date, user_id, role='administrator'):
+    def __init__(self, name, birth_date, user_id, password, role='administrator'):
         """
         Initialize an admin user.
         
@@ -13,13 +13,15 @@ class Admin(User):
             name (str): Admin name
             birth_date (str): Date of birth (YYYY-MM-DD)
             user_id (str): Unique identifier
+            password (str): Admin password
             role (str): Admin role - mechanic, rental_manager, or administrator
         """
         if not user_id.startswith('A'):
             raise ValueError("Admin ID must start with 'A'")
-        super().__init__(name, birth_date, user_id)
+        super().__init__(name, birth_date, user_id, password)
         self._validate_role(role)
         self.role = role
+        self.is_admin = True
     
     def _validate_role(self, role):
         """Validate that the role is one of the valid roles."""
@@ -75,5 +77,16 @@ class Admin(User):
             name=data['name'],
             birth_date=data['birth_date'],
             user_id=data['user_id'],
-            role=data['role']
-        ) 
+            password=data['password'],
+            role=data.get('role', 'administrator')
+        )
+    
+    def can_rent_vehicle(self, vehicle):
+        """Check if the admin can rent a specific vehicle."""
+        # Admins cannot rent vehicles
+        return False
+    
+    def can_return_vehicle(self, rental):
+        """Check if the admin can return a specific rental."""
+        # Admins can return any rental
+        return True 

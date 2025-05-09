@@ -1,14 +1,14 @@
 import os
 import csv
-from models.vehicle import Vehicle
-from models.car import Car
-from models.motorbike import Motorbike
-from models.truck import Truck
-from models.user import User
-from models.client import Client
-from models.admin import Admin
-from models.rental import Rental
 from datetime import datetime
+from .vehicle import Vehicle
+from .car import Car
+from .motorbike import Motorbike
+from .truck import Truck
+from .user import User
+from .client import Client
+from .admin import Admin
+from .rental import Rental
 
 class Shop:
     """Shop management class that handles the operations of the rental shop."""
@@ -26,13 +26,22 @@ class Shop:
         self.admins = []
         self.rentals = []
         self.data_dir = "data"
+        os.makedirs(self.data_dir, exist_ok=True)
         self.load_data()
     
     def load_data(self):
         """Load data from CSV files."""
-        self._load_vehicles()
-        self._load_users()
-        self._load_rentals()
+        try:
+            self._load_vehicles()
+            self._load_users()
+            self._load_rentals()
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            # Initialize with empty data if loading fails
+            self.vehicles = []
+            self.clients = []
+            self.admins = []
+            self.rentals = []
     
     def save_data(self):
         """Save data to CSV files."""
@@ -44,22 +53,22 @@ class Shop:
     
     def add_vehicle(self, vehicle):
         """Add a vehicle to the shop."""
-        if any(v.license_plate == vehicle.license_plate for v in self.vehicles):
+        if any(v.vehicle_id == vehicle.vehicle_id for v in self.vehicles):
             return False
         self.vehicles.append(vehicle)
         return True
     
-    def remove_vehicle(self, license_plate):
+    def remove_vehicle(self, vehicle_id):
         """Remove a vehicle from the shop."""
-        vehicle = self.get_vehicle_by_license_plate(license_plate)
-        if not vehicle or any(r.is_active for r in vehicle.rentals):
+        vehicle = self.get_vehicle_by_id(vehicle_id)
+        if not vehicle or any(r.is_active() for r in self.rentals if r.vehicle_id == vehicle_id):
             return False
         self.vehicles.remove(vehicle)
         return True
     
-    def get_vehicle_by_license_plate(self, license_plate):
-        """Get a vehicle by license plate."""
-        return next((v for v in self.vehicles if v.license_plate == license_plate), None)
+    def get_vehicle_by_id(self, vehicle_id):
+        """Get a vehicle by ID."""
+        return next((v for v in self.vehicles if v.vehicle_id == vehicle_id), None)
     
     def add_client(self, client):
         """Add a client to the shop."""
@@ -71,7 +80,7 @@ class Shop:
     def remove_client(self, user_id):
         """Remove a client from the shop."""
         client = self.get_client_by_id(user_id)
-        if not client or any(r.is_active for r in client.rentals):
+        if not client or any(r.is_active() for r in self.rentals if r.client_username == user_id):
             return False
         self.clients.remove(client)
         return True
@@ -99,52 +108,59 @@ class Shop:
         """Get an admin by ID."""
         return next((a for a in self.admins if a.user_id == user_id), None)
     
-    def create_rental(self, license_plate, user_id, start_date, end_date, assurance_type="basic"):
+    def create_rental(self, vehicle_id, user_id, start_date=None):
         """Create a new rental."""
-        vehicle = self.get_vehicle_by_license_plate(license_plate)
+        vehicle = self.get_vehicle_by_id(vehicle_id)
         client = self.get_client_by_id(user_id)
         
         if not vehicle or not client:
             return None
         
-        if any(r.is_active for r in vehicle.rentals):
+        if any(r.is_active() for r in self.rentals if r.vehicle_id == vehicle_id):
             return None
         
-        rental = Rental(vehicle, client, start_date, end_date, assurance_type)
+        if not client.can_rent_vehicle(vehicle):
+            return None
+        
+        start_date = start_date or datetime.now()
+        rental = Rental.create(user_id, vehicle_id, start_date)
         self.rentals.append(rental)
-        vehicle.rentals.append(rental)
-        client.rentals.append(rental)
         return rental
     
     def end_rental(self, rental_id, final_mileage):
-        """End a rental."""
-        rental = next((r for r in self.rentals if r.rental_id == rental_id), None)
-        if not rental or not rental.is_active:
+        """End a rental and update vehicle mileage."""
+        rental = self.get_rental_by_id(rental_id)
+        if not rental or not rental.is_active():
             return False
-        return rental.end_rental(final_mileage)
+        
+        vehicle = self.get_vehicle_by_id(rental.vehicle_id)
+        if not vehicle:
+            return False
+        
+        if rental.end_rental(final_mileage):
+            vehicle.mileage = final_mileage
+            return True
+        return False
     
     def get_rental_by_id(self, rental_id):
         """Get a rental by ID."""
-        for rental in self.rentals:
-            if rental.rental_id == rental_id:
-                return rental
-        return None
+        return next((r for r in self.rentals if r.rental_id == rental_id), None)
     
     def get_active_rentals(self):
         """Get all active rentals."""
-        return [r for r in self.rentals if r.is_active]
+        return [r for r in self.rentals if r.is_active()]
     
     def get_client_rentals(self, user_id):
         """Get all rentals for a client."""
-        return [r for r in self.rentals if r.client.user_id == user_id]
+        return [r for r in self.rentals if r.client_username == user_id]
     
-    def get_vehicle_rentals(self, license_plate):
+    def get_vehicle_rentals(self, vehicle_id):
         """Get all rentals for a vehicle."""
-        return [rental for rental in self.rentals if rental.vehicle.license_plate == license_plate]
+        return [r for r in self.rentals if r.vehicle_id == vehicle_id]
     
     def get_available_vehicles(self):
         """Get all vehicles that are not currently rented."""
-        return [v for v in self.vehicles if not any(r.is_active for r in v.rentals)]
+        return [v for v in self.vehicles if not any(r.is_active() for r in self.rentals if r.vehicle_id == v.vehicle_id)]
     
     def get_vehicles_by_type(self, vehicle_type):
         """Get all vehicles of a specific type."""
@@ -186,88 +202,33 @@ class Shop:
         return vehicles_needing_maintenance
 
     def _save_vehicles(self):
+        """Save vehicles to CSV file."""
         filename = os.path.join(self.data_dir, "vehicles.csv")
-        fieldnames = ['type', 'brand', 'color', 'license_plate', 'model', 'matriculation_date', 'mileage']
-        
-        with open(filename, 'w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for vehicle in self.vehicles:
-                writer.writerow(vehicle.to_dict())
+        Vehicle.save_vehicles_to_csv(self.vehicles, filename)
 
     def _save_users(self):
+        """Save users to CSV file."""
         filename = os.path.join(self.data_dir, "users.csv")
-        fieldnames = ['type', 'name', 'birth_date', 'user_id', 'role']
-        
-        with open(filename, 'w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for client in self.clients:
-                writer.writerow(client.to_dict())
-            for admin in self.admins:
-                writer.writerow(admin.to_dict())
+        User.save_users_to_csv(self.clients + self.admins, filename)
 
     def _save_rentals(self):
+        """Save rentals to CSV file."""
         filename = os.path.join(self.data_dir, "rentals.csv")
-        fieldnames = ['rental_id', 'vehicle_license_plate', 'client_id', 'start_date', 'end_date', 
-                     'assurance_type', 'is_active', 'initial_mileage', 'final_mileage', 'return_date']
-        
-        with open(filename, 'w', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            for rental in self.rentals:
-                writer.writerow(rental.to_dict())
+        Rental.save_rentals_to_csv(self.rentals, filename)
 
     def _load_vehicles(self):
+        """Load vehicles from CSV file."""
         filename = os.path.join(self.data_dir, "vehicles.csv")
-        if not os.path.exists(filename):
-            return
-        
-        with open(filename, 'r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                vehicle_type = row['type']
-                if vehicle_type == 'Car':
-                    vehicle = Car.from_dict(row)
-                elif vehicle_type == 'Motorbike':
-                    vehicle = Motorbike.from_dict(row)
-                elif vehicle_type == 'Truck':
-                    vehicle = Truck.from_dict(row)
-                else:
-                    continue
-                self.vehicles.append(vehicle)
+        self.vehicles = Vehicle.load_vehicles_from_csv(filename)
 
     def _load_users(self):
+        """Load users from CSV file."""
         filename = os.path.join(self.data_dir, "users.csv")
-        if not os.path.exists(filename):
-            return
-        
-        with open(filename, 'r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                user_type = row['type']
-                if user_type == 'Client':
-                    user = Client.from_dict(row)
-                    self.clients.append(user)
-                elif user_type == 'Admin':
-                    user = Admin.from_dict(row)
-                    self.admins.append(user)
+        users = User.load_users_from_csv(filename)
+        self.clients = [u for u in users if isinstance(u, Client)]
+        self.admins = [u for u in users if isinstance(u, Admin)]
 
     def _load_rentals(self):
+        """Load rentals from CSV file."""
         filename = os.path.join(self.data_dir, "rentals.csv")
-        if not os.path.exists(filename):
-            return
-        
-        with open(filename, 'r', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                vehicle = self.get_vehicle_by_license_plate(row['vehicle_license_plate'])
-                client = self.get_client_by_id(row['client_id'])
-                
-                if not vehicle or not client:
-                    continue
-                
-                rental = Rental.from_dict(row, vehicle, client)
-                self.rentals.append(rental)
-                vehicle.rentals.append(rental)
-                client.rentals.append(rental) 
+        self.rentals = Rental.load_rentals_from_csv(filename) 

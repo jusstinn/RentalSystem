@@ -2,28 +2,29 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import csv
 import os
-from models.base_vehicle import BaseVehicle
+from .base_vehicle import BaseVehicle
 
 class Vehicle(BaseVehicle):
-    """Base class for all vehicle types."""
-    
-    def __init__(self, brand, color, license_plate, model, matriculation_date, mileage):
-        """
-        Initialize a vehicle.
-        
-        Args:
-            brand (str): Vehicle brand
-            color (str): Vehicle color
-            license_plate (str): Unique license plate (4 numbers and 3 letters)
-            model (str): Vehicle model
-            matriculation_date (str): Date of matriculation (YYYY-MM-DD)
-            mileage (int): Current mileage in km
-        """
-        super().__init__(brand, color, license_plate, model, matriculation_date, mileage)
+    def __init__(self, vehicle_id, brand, model, year, daily_rate):
+        self.vehicle_id = vehicle_id
+        self.brand = brand
+        self.model = model
+        self.year = year
+        self.daily_rate = daily_rate
+        self.is_available = True
         self.rentals = []
+        self.matriculation_date = datetime.now().strftime("%Y-%m-%d")
+        self.license_plate = None
+        self.mileage = 0
+        self.color = None
+    
+    def __str__(self):
+        return f"{self.brand} {self.model} ({self.year})"
+    
+    def calculate_rental_cost(self, days):
+        return self.daily_rate * days
     
     def _validate_license_plate(self, license_plate):
-        """Validate that license plate has 4 numbers and is in Spanish format."""
         if not isinstance(license_plate, str):
             return False
         if len(license_plate) != 7:
@@ -36,16 +37,17 @@ class Vehicle(BaseVehicle):
     
     @abstractmethod
     def calculate_next_itv(self):
-        """Calculate the date for the next ITV (vehicle inspection)."""
         pass
     
     @abstractmethod
     def calculate_next_maintenance(self):
-        """Calculate the date for the next maintenance."""
+        pass
+    
+    @abstractmethod
+    def needs_maintenance_by_km(self, km_since_last_maintenance):
         pass
     
     def update_info(self, brand=None, color=None, license_plate=None, model=None, matriculation_date=None, mileage=None):
-        """Update vehicle information."""
         if brand is not None:
             self.brand = brand
         if color is not None:
@@ -62,22 +64,24 @@ class Vehicle(BaseVehicle):
             self.mileage = mileage
     
     def to_dict(self):
-        """Convert vehicle to dictionary for saving to CSV."""
         return {
+            'vehicle_id': self.vehicle_id,
             'brand': self.brand,
-            'color': self.color,
-            'license_plate': self.license_plate,
             'model': self.model,
+            'year': self.year,
+            'daily_rate': self.daily_rate,
+            'is_available': self.is_available,
+            'license_plate': self.license_plate,
             'matriculation_date': self.matriculation_date,
-            'mileage': self.mileage
+            'mileage': self.mileage,
+            'color': self.color
         }
     
     @classmethod
     def save_vehicles_to_csv(cls, vehicles, filename):
-        """Save a list of vehicles to a CSV file."""
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         
-        fieldnames = ['brand', 'color', 'license_plate', 'model', 'matriculation_date', 'mileage']
+        fieldnames = ['vehicle_id', 'brand', 'model', 'year', 'daily_rate', 'is_available', 'license_plate', 'matriculation_date', 'mileage', 'type', 'color']
         
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -87,10 +91,9 @@ class Vehicle(BaseVehicle):
     
     @classmethod
     def load_vehicles_from_csv(cls, filename):
-        """Load vehicles from a CSV file."""
-        from models.car import Car
-        from models.motorbike import Motorbike
-        from models.truck import Truck
+        from .car import Car
+        from .motorbike import Motorbike
+        from .truck import Truck
         
         vehicles = []
         
@@ -102,7 +105,6 @@ class Vehicle(BaseVehicle):
             for row in reader:
                 vehicle_type = row.pop('type')
                 
-                # Convert mileage to integer
                 if 'mileage' in row:
                     row['mileage'] = int(row['mileage'])
                 
@@ -125,10 +127,9 @@ class Vehicle(BaseVehicle):
     @classmethod
     def from_dict(cls, data):
         return cls(
+            vehicle_id=data['vehicle_id'],
             brand=data['brand'],
-            color=data['color'],
-            license_plate=data['license_plate'],
             model=data['model'],
-            matriculation_date=data['matriculation_date'],
-            mileage=data['mileage']
+            year=data['year'],
+            daily_rate=data['daily_rate']
         ) 

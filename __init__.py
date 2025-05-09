@@ -1,0 +1,3 @@
+"""
+Vehicle Rental System package.
+""" 
